@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>BTC 实时大号显示</title>
+  <style>
+    html,body{height:100%;margin:0;background:#000;cursor:none}
+    body{display:flex;align-items:center;justify-content:center;overflow:hidden}
+    #price{
+      font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+      font-size: clamp(48px, 18vw, 320px);
+      line-height:1;
+      color:#fff;
+      -webkit-font-smoothing:antialiased;
+      text-rendering:optimizeLegibility;
+      user-select:none;
+      white-space:nowrap;
+    }
+    ::selection{background:transparent}
+  </style>
+</head>
+<body>
+  <div id="price">---</div>
+
+  <script>
+    const el = document.getElementById('price');
+
+    function formatPrice(num){
+      try{
+        const nf = new Intl.NumberFormat(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0});
+        return nf.format(Math.floor(Number(num)));
+      }catch(e){
+        return String(num);
+      }
+    }
+
+    async function fetchPrice(){
+      try{
+        const r = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd');
+        const j = await r.json();
+        if(j && j.bitcoin && j.bitcoin.usd!=null){
+          el.textContent = formatPrice(j.bitcoin.usd);
+        }
+      }catch(e){
+        console.warn('fetch failed', e);
+      }
+    }
+
+    // 每 2 秒刷新一次
+    fetchPrice();
+    setInterval(fetchPrice, 2000);
+
+    // 自动进入全屏
+    function requestFullscreen(){
+      const elem = document.documentElement;
+      if (elem.requestFullscreen) elem.requestFullscreen();
+      else if (elem.webkitRequestFullscreen) elem.webkitRequestFullscreen();
+      else if (elem.msRequestFullscreen) elem.msRequestFullscreen();
+    }
+
+    window.addEventListener('load', ()=>{
+      requestFullscreen();
+    });
+  </script>
+</body>
+</html>
