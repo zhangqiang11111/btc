@@ -1,119 +1,73 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>BTC 实时大号显示</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BTC 实时价格</title>
   <style>
-    html,body{height:100%;margin:0;background:#000;cursor:none}
-    body{display:flex;align-items:center;justify-content:center;overflow:hidden}
-    #price{
-      font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
-      font-size: clamp(48px, 18vw, 320px);
-      line-height:1;
-      color:#fff;
-      -webkit-font-smoothing:antialiased;
-      text-rendering:optimizeLegibility;
-      user-select:none;
-      white-space:nowrap;
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #000;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      cursor: none;
     }
-    ::selection{background:transparent}
+    #price {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-weight: 600;
+      font-size: clamp(60px, 20vw, 300px);
+      color: #fff;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+      user-select: none;
+    }
+    #updated {
+      position: fixed;
+      bottom: 20px;
+      right: 30px;
+      font-size: 14px;
+      color: #666;
+      font-family: monospace;
+    }
   </style>
 </head>
 <body>
-  <div id="price">---</div>
+  <div id="price">--</div>
+  <div id="updated"></div>
 
   <script>
-    const SYMBOL = 'btcusdt';          
-    const DECIMALS = 0;               // 不显示小数
-    const MAX_RECONNECT_DELAY = 30000;
+    const priceEl = document.getElementById("price");
+    const updatedEl = document.getElementById("updated");
 
-    const el = document.getElementById('price');
+    // 使用 Binance WebSocket 获取 BTC/USDT 实时价格
+    const ws = new WebSocket("wss://stream.binance.com:9443/ws/btcusdt@trade");
 
-    function formatPrice(num){
-      try{
-        const nf = new Intl.NumberFormat(undefined, {minimumFractionDigits: DECIMALS, maximumFractionDigits: DECIMALS});
-        return nf.format(Math.floor(Number(num)));
-      }catch(e){
-        return String(num);
-      }
-    }
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      const price = parseFloat(data.p).toFixed(0); // 去掉小数点，显示整数价格
+      priceEl.textContent = price;
 
-    let ws;
-    let reconnectDelay = 500;
-    function connect(){
-      const url = `wss://stream.binance.com:9443/ws/${SYMBOL}@trade`;
-      ws = new WebSocket(url);
+      const now = new Date();
+      updatedEl.textContent = "更新时间：" + now.toLocaleTimeString();
+    };
 
-      ws.onopen = ()=>{
-        reconnectDelay = 500;
-        console.log('connected to', url);
-      };
+    ws.onopen = () => {
+      console.log("✅ 已连接 Binance 实时行情 WebSocket");
+    };
 
-      ws.onmessage = (ev)=>{
-        try{
-          const data = JSON.parse(ev.data);
-          const price = data.p || data.price || data.c;
-          if(price){
-            el.textContent = formatPrice(price);
-          }
-        }catch(err){
-          console.error('parse msg', err);
-        }
-      };
+    ws.onerror = (err) => {
+      console.error("❌ WebSocket 错误:", err);
+      priceEl.textContent = "数据错误";
+    };
 
-      ws.onclose = ()=>{
-        console.log('ws closed, reconnect in', reconnectDelay);
-        setTimeout(connect, reconnectDelay);
-        reconnectDelay = Math.min(reconnectDelay * 1.5, MAX_RECONNECT_DELAY);
-      };
-
-      ws.onerror = (e)=>{
-        console.warn('ws error', e);
-        ws.close();
-      };
-    }
-
-    let fallbackTimer;
-    function startFallbackPolling(){
-      if(fallbackTimer) return;
-      async function poll(){
-        try{
-          const r = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd');
-          const j = await r.json();
-          if(j && j.bitcoin && j.bitcoin.usd!=null){
-            el.textContent = formatPrice(j.bitcoin.usd);
-          }
-        }catch(e){ console.warn('coingecko poll failed', e); }
-      }
-      poll();
-      fallbackTimer = setInterval(poll, 5000);
-    }
-
-    function start(){
-      if('WebSocket' in window){
-        connect();
-        const timeout = setTimeout(()=>{
-          if(el.textContent === '---') startFallbackPolling();
-        }, 5000);
-      }else{
-        startFallbackPolling();
-      }
-    }
-
-    start();
-
-    // 自动进入全屏
-    function requestFullscreen(){
-      const elem = document.documentElement;
-      if (elem.requestFullscreen) elem.requestFullscreen();
-      else if (elem.webkitRequestFullscreen) elem.webkitRequestFullscreen();
-      else if (elem.msRequestFullscreen) elem.msRequestFullscreen();
-    }
-
-    window.addEventListener('load', ()=>{
-      requestFullscreen();
-    });
+    ws.onclose = () => {
+      console.warn("⚠️ WebSocket 已断开，5 秒后尝试重连...");
+      setTimeout(() => location.reload(), 5000);
+    };
   </script>
 </body>
 </html>
