@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>BTC Realtime + Put Wall Dashboard</title>
+  <title>BTC Realtime + Put Wall</title>
   <style>
     html, body {
       height: 100%;
@@ -43,24 +43,23 @@
   <div id="note">BTC/USDT (Binance) · Deribit Options</div>
 
   <script type="module">
-    import { io } from "https://esm.sh/socket.io-client@4.7.5";
     import axios from "https://esm.sh/axios@1.6.8";
 
     const priceEl = document.getElementById("price");
     const wallEl = document.getElementById("putwall");
 
-    // --- Binance 实时价格 ---
-    const socket = io("wss://stream.binance.com:9443/ws/btcusdt@trade", {
-      transports: ["websocket"]
-    });
-
-    socket.on("message", msg => {
+    // --- Binance WebSocket (原生实现) ---
+    const ws = new WebSocket("wss://stream.binance.com:9443/ws/btcusdt@trade");
+    ws.onmessage = (event) => {
       try {
-        const data = JSON.parse(msg);
+        const data = JSON.parse(event.data);
         const price = Math.round(Number(data.p));
         priceEl.textContent = price.toLocaleString();
-      } catch (e) {}
-    });
+      } catch {}
+    };
+
+    ws.onopen = () => priceEl.textContent = "Connecting...";
+    ws.onclose = () => priceEl.textContent = "Disconnected";
 
     // --- Deribit Put Wall ---
     async function fetchPutWall() {
@@ -69,10 +68,8 @@
           params: { currency: "BTC", kind: "option" }
         });
         const options = res.data.result || [];
-        const puts = options.filter(o => o.instrument_name.includes("P-"));
-        if (puts.length === 0) return;
-
-        // 找出持仓量最大的 Put 价位
+        const puts = options.filter(o => /P$/.test(o.instrument_name));
+        if (!puts.length) return;
         const top = puts.reduce((a, b) => (a.open_interest > b.open_interest ? a : b));
         const strike = top.strike;
         wallEl.textContent = `Put Wall — ${strike.toLocaleString()}`;
@@ -82,8 +79,7 @@
     }
 
     fetchPutWall();
-    setInterval(fetchPutWall, 60000); // 每分钟刷新一次
-
+    setInterval(fetchPutWall, 60000);
   </script>
 </body>
 </html>
