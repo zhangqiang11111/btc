@@ -1,73 +1,89 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
+<!doctype html>
+<html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>BTC 实时价格</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BTC Realtime + Put Wall Dashboard</title>
   <style>
     html, body {
-      margin: 0;
-      padding: 0;
-      background: #000;
       height: 100%;
+      margin: 0;
+      background: black;
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
       overflow: hidden;
-      cursor: none;
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
     #price {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-      font-weight: 600;
-      font-size: clamp(60px, 20vw, 300px);
-      color: #fff;
-      -webkit-font-smoothing: antialiased;
-      text-rendering: optimizeLegibility;
+      color: white;
+      font-size: clamp(60px, 20vw, 320px);
+      font-weight: 700;
       user-select: none;
     }
-    #updated {
+    #putwall {
+      color: #0ff;
+      font-size: clamp(32px, 10vw, 160px);
+      font-weight: 600;
+      margin-top: 10px;
+    }
+    #note {
       position: fixed;
-      bottom: 20px;
-      right: 30px;
-      font-size: 14px;
+      bottom: 10px;
+      left: 12px;
       color: #666;
-      font-family: monospace;
+      font-size: 14px;
     }
   </style>
 </head>
 <body>
-  <div id="price">--</div>
-  <div id="updated"></div>
+  <div id="price">Loading...</div>
+  <div id="putwall">Put Wall — ...</div>
+  <div id="note">BTC/USDT (Binance) · Deribit Options</div>
 
-  <script>
+  <script type="module">
+    import { io } from "https://esm.sh/socket.io-client@4.7.5";
+    import axios from "https://esm.sh/axios@1.6.8";
+
     const priceEl = document.getElementById("price");
-    const updatedEl = document.getElementById("updated");
+    const wallEl = document.getElementById("putwall");
 
-    // 使用 Binance WebSocket 获取 BTC/USDT 实时价格
-    const ws = new WebSocket("wss://stream.binance.com:9443/ws/btcusdt@trade");
+    // --- Binance 实时价格 ---
+    const socket = io("wss://stream.binance.com:9443/ws/btcusdt@trade", {
+      transports: ["websocket"]
+    });
 
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      const price = parseFloat(data.p).toFixed(0); // 去掉小数点，显示整数价格
-      priceEl.textContent = price;
+    socket.on("message", msg => {
+      try {
+        const data = JSON.parse(msg);
+        const price = Math.round(Number(data.p));
+        priceEl.textContent = price.toLocaleString();
+      } catch (e) {}
+    });
 
-      const now = new Date();
-      updatedEl.textContent = "更新时间：" + now.toLocaleTimeString();
-    };
+    // --- Deribit Put Wall ---
+    async function fetchPutWall() {
+      try {
+        const res = await axios.get("https://www.deribit.com/api/v2/public/get_book_summary_by_currency", {
+          params: { currency: "BTC", kind: "option" }
+        });
+        const options = res.data.result || [];
+        const puts = options.filter(o => o.instrument_name.includes("P-"));
+        if (puts.length === 0) return;
 
-    ws.onopen = () => {
-      console.log("✅ 已连接 Binance 实时行情 WebSocket");
-    };
+        // 找出持仓量最大的 Put 价位
+        const top = puts.reduce((a, b) => (a.open_interest > b.open_interest ? a : b));
+        const strike = top.strike;
+        wallEl.textContent = `Put Wall — ${strike.toLocaleString()}`;
+      } catch (err) {
+        wallEl.textContent = "Put Wall — Error";
+      }
+    }
 
-    ws.onerror = (err) => {
-      console.error("❌ WebSocket 错误:", err);
-      priceEl.textContent = "数据错误";
-    };
+    fetchPutWall();
+    setInterval(fetchPutWall, 60000); // 每分钟刷新一次
 
-    ws.onclose = () => {
-      console.warn("⚠️ WebSocket 已断开，5 秒后尝试重连...");
-      setTimeout(() => location.reload(), 5000);
-    };
   </script>
 </body>
 </html>
